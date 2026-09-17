@@ -1,0 +1,104 @@
+import cv2
+import numpy as np
+
+# Setup webcam
+cap = cv2.VideoCapture(0)
+
+# Colors in BGR for drawing on screen
+colors = [
+    (255, 0, 0),    # Blue
+    (0, 255, 0),    # Green
+    (0, 0, 255),    # Red
+    (0, 255, 255),  # Yellow
+    (0, 0, 0)       # Eraser
+]
+color_names = ["BLUE", "GREEN", "RED", "YELLOW", "ERASER"]
+current_color = colors[0]
+
+# --- HSV COLOR CALIBRATION ---
+# Default tuned for bright BLUE objects (pen caps, tape, markers)
+# Adjust these 6 numbers if tracking a different object color:
+Lower_hsv = np.array([100, 150, 0])
+Upper_hsv = np.array([140, 255, 255])
+
+# Canvas overlay initialization
+ret, frame = cap.read()
+h, w, _ = frame.shape
+canvas = np.zeros((h, w, 3), dtype=np.uint8)
+
+prev_x, prev_y = 0, 0
+brush_thickness = 5
+eraser_thickness = 50
+
+def draw_header(img):
+    """Draw top control palette."""
+    col_w = w // 6
+    for i in range(5):
+        cv2.rectangle(img, (i * col_w, 0), ((i + 1) * col_w, 60), colors[i], -1)
+        text_color = (255, 255, 255) if i < 3 else (0, 0, 0)
+        cv2.putText(img, color_names[i], (i * col_w + 10, 40),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, text_color, 2)
+    
+    cv2.rectangle(img, (5 * col_w, 0), (w, 60), (100, 100, 100), -1)
+    cv2.putText(img, "CLEAR", (5 * col_w + 15, 40),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+
+while cap.isOpened():
+    ret, frame = cap.read()
+    if not ret:
+        break
+
+    frame = cv2.flip(frame, 1)
+    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+
+    draw_header(frame)
+
+    # Filter out target object color
+    mask = cv2.inRange(hsv, Lower_hsv, Upper_hsv)
+    mask = cv2.erode(mask, None, iterations=2)
+    mask = cv2.dilate(mask, None, iterations=2)
+
+    # Track largest object contour
+    contours, _ = cv2.findContours(mask.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    
+    if len(contours) > 0:
+        c = max(contours, key=cv2.contourArea)
+        if cv2.contourArea(c) > 500:  # Minimum size threshold
+            ((x, y), radius) = cv2.minEnclosingCircle(c)
+            center = (int(x), int(y))
+            cv2.circle(frame, center, int(radius), (0, 255, 255), 2)
+
+            # Palette Selection Zone
+            if center[1] < 60:
+                prev_x, prev_y = 0, 0
+                col_w = w // 6
+                click_idx = center[0] // col_w
+                if click_idx < 5:
+                    current_color = colors[click_idx]
+                elif click_idx == 5:
+                    canvas = np.zeros((h, w, 3), dtype=np.uint8)
+            else:
+                # Drawing Zone
+                if prev_x == 0 and prev_y == 0:
+                    prev_x, prev_y = center[0], center[1]
+                
+                thickness = eraser_thickness if current_color == (0, 0, 0) else brush_thickness
+                cv2.line(canvas, (prev_x, prev_y), center, current_color, thickness)
+                prev_x, prev_y = center[0], center[1]
+    else:
+        prev_x, prev_y = 0, 0
+
+    # Merge drawn lines onto camera output
+    img_gray = cv2.cvtColor(canvas, cv2.COLOR_BGR2GRAY)
+    _, img_inv = cv2.threshold(img_gray, 20, 255, cv2.THRESH_BINARY_INV)
+    img_inv = cv2.cvtColor(img_inv, cv2.COLOR_GRAY2BGR)
+    frame = cv2.bitwise_and(frame, img_inv)
+    frame = cv2.bitwise_or(frame, canvas)
+
+    cv2.imshow("Air Canvas", frame)
+
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
+
+cap.release()
+cv2.destroyAllWindows()
