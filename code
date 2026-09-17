@@ -4,22 +4,23 @@ import numpy as np
 # Setup webcam
 cap = cv2.VideoCapture(0)
 
-# Colors in BGR for drawing on screen
+# Expanded Color Palette (in BGR format)
 colors = [
-    (255, 0, 0),    # Blue
-    (0, 255, 0),    # Green
-    (0, 0, 255),    # Red
-    (0, 255, 255),  # Yellow
-    (0, 0, 0)       # Eraser
+    (255, 0, 0),      # Blue
+    (0, 255, 0),      # Green
+    (0, 0, 255),      # Red
+    (0, 255, 255),    # Yellow
+    (0, 165, 255),    # Orange
+    (255, 0, 255),    # Magenta / Purple
+    (255, 255, 0),    # Cyan
+    (0, 0, 0)         # Eraser
 ]
-color_names = ["BLUE", "GREEN", "RED", "YELLOW", "ERASER"]
+color_names = ["BLUE", "GREEN", "RED", "YELLOW", "ORANGE", "PURPLE", "CYAN", "ERASER"]
 current_color = colors[0]
 
-# --- HSV COLOR CALIBRATION ---
-# Default tuned for bright BLUE objects (pen caps, tape, markers)
-# Adjust these 6 numbers if tracking a different object color:
-Lower_hsv = np.array([100, 150, 0])
-Upper_hsv = np.array([140, 255, 255])
+# --- HSV COLOR CALIBRATION (Dark Blue cap preset) ---
+Lower_hsv = np.array([95, 100, 30])
+Upper_hsv = np.array([135, 255, 255])
 
 # Canvas overlay initialization
 ret, frame = cap.read()
@@ -31,17 +32,22 @@ brush_thickness = 5
 eraser_thickness = 50
 
 def draw_header(img):
-    """Draw top control palette."""
-    col_w = w // 6
-    for i in range(5):
+    """Draw top control palette with dynamic column widths."""
+    total_items = len(colors) + 1  # 8 colors + 1 CLEAR button
+    col_w = w // total_items
+
+    # Draw color boxes
+    for i in range(len(colors)):
         cv2.rectangle(img, (i * col_w, 0), ((i + 1) * col_w, 60), colors[i], -1)
-        text_color = (255, 255, 255) if i < 3 else (0, 0, 0)
-        cv2.putText(img, color_names[i], (i * col_w + 10, 40),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, text_color, 2)
+        # Choose text color based on background brightness
+        text_color = (0, 0, 0) if i in [3, 4, 6] else (255, 255, 255)
+        cv2.putText(img, color_names[i], (i * col_w + 5, 40),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.45, text_color, 2)
     
-    cv2.rectangle(img, (5 * col_w, 0), (w, 60), (100, 100, 100), -1)
-    cv2.putText(img, "CLEAR", (5 * col_w + 15, 40),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+    # Draw CLEAR button on far right
+    cv2.rectangle(img, (len(colors) * col_w, 0), (w, 60), (100, 100, 100), -1)
+    cv2.putText(img, "CLEAR", (len(colors) * col_w + 5, 40),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 2)
 
 while cap.isOpened():
     ret, frame = cap.read()
@@ -71,11 +77,12 @@ while cap.isOpened():
             # Palette Selection Zone
             if center[1] < 60:
                 prev_x, prev_y = 0, 0
-                col_w = w // 6
+                total_items = len(colors) + 1
+                col_w = w // total_items
                 click_idx = center[0] // col_w
-                if click_idx < 5:
+                if click_idx < len(colors):
                     current_color = colors[click_idx]
-                elif click_idx == 5:
+                elif click_idx == len(colors):
                     canvas = np.zeros((h, w, 3), dtype=np.uint8)
             else:
                 # Drawing Zone
